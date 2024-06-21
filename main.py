@@ -5,6 +5,7 @@ import json
 from collections import defaultdict, deque
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters
+from telegram import ChatPermissions
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -106,7 +107,7 @@ async def handle_message(update: Update, context):
         logger.info("Skipping update without message or from_user attribute")
         return
 
-    user_id = str(message.from_user.id)  # ensure user_id is string for JSON keys
+    user_id = str(message.from_user.id)
     chat_id = message.chat_id
     message_text = message.text
     message_id = message.message_id
@@ -122,11 +123,37 @@ async def handle_message(update: Update, context):
             logger.info(f'Recent messages for chat {chat_id}: {context_text}')
 
             if is_spam(message_text, context_text):
-                await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-                #await context.bot.send_message(chat_id=chat_id, text=f"🚨{username} запостил спам, а я его удалил")
-                spam_logger.info(f"User ID: {user_id}, Username: {username}, Deleted Message: {message_text}")
-                logger.info(f'Deleted spam message: {message_text}')
-                message_text = 'here was a spam message'
+                # Check bot permissions
+                bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
+                can_delete = bot_member.can_delete_messages
+                can_restrict = bot_member.can_restrict_members
+
+                action_log = f"User ID: {user_id}, Username: {username}, Spam Message: {message_text}"
+
+                if can_delete:
+                    try:
+                        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+                        action_log += ", Action: Message deleted"
+                        logger.info(f'Deleted spam message: {message_text}')
+                        message_text = 'here was a spam message'
+                    except Exception as e:
+                        logger.error(f"Failed to delete message: {e}")
+                        action_log += f", Action: Failed to delete message ({e})"
+                else:
+                    await context.bot.send_message(chat_id=chat_id, text=f"🚨у меня нет прав на удаление сообщения от {username}")
+                    action_log += ", Action: No permission to delete message"
+
+                if can_restrict:
+                    try:
+                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=int(user_id))
+                        action_log += ", User banned"
+                    except Exception as e:
+                        logger.error(f"Failed to ban user: {e}")
+                        action_log += f", Failed to ban user ({e})"
+                else:
+                    action_log += ", No permission to ban user"
+
+                spam_logger.info(action_log)
             else:
                 update_safe_messages_count(user_id, username)
         else:
