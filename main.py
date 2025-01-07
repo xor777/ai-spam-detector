@@ -56,8 +56,8 @@ def is_spam(message, context):
     While the chat mainly focuses on car-related topics, members can discuss various subjects.
     Your task is to carefully analyze a specific message within the context of the ongoing conversation 
     and determine if it is likely spam or a genuine message.
-    Consider the following criteria when assessing the message:
 
+    Consider the following criteria when assessing the message:
     1. Promises of high earnings in a short period or with little effort (e.g., "300-400 dollars per week", "500$+ per week", "pure profit of 400-500$ per day").
     2. Mentions of remote work or collaboration without specific details about the job itself (e.g., "remote employment", "remote work", "remote collaboration").
     3. Calls to write to private messages (PM) for details, instead of openly describing the offer (e.g., "for details in PM", "if interested, write to PM", "for details, write to PM").
@@ -70,6 +70,9 @@ def is_spam(message, context):
     10. Vague invitations to join a project or group without providing any specific details about the nature of the work or the organization (e.g., "Join us", "We are looking for reliable people", "Become part of our team").
     11. Out of context of the ongoing conversation in the chat.
     12. Sales advertisements or promotional messages for products/services (e.g., "selling", "buy now", "special offer", "discount", "promotion").
+
+    If 2 or more of these signs are present in the message, even if they are not strongly expressed, then it should be classified as spam.
+    Be cautious not to flag the message as spam simply because it mentions job opportunities or collaborations. 
 
     Return a JSON response in the following format:
     {{
