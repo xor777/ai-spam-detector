@@ -12,10 +12,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TELEGRAM_API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')  
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO, encoding='utf-8')
 logger = logging.getLogger(__name__)
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 spam_logger = logging.getLogger('spam_logger')
 spam_handler = logging.FileHandler('spam_log.txt', encoding='utf-8')
@@ -42,7 +45,10 @@ def save_safe_users(data, file_path='safe_users.json'):
 safe_messages_count = load_safe_users()
 recent_messages = defaultdict(lambda: deque(maxlen=5))
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(
+    api_key=DEEPSEEK_API_KEY,
+    base_url="https://api.deepseek.com/v1"
+)
 
 def is_spam(message, context):
     prompt = f"""
@@ -63,43 +69,69 @@ def is_spam(message, context):
     9. Recruiting personnel or partners with minimal requirements (e.g., age being the only criteria).
     10. Vague invitations to join a project or group without providing any specific details about the nature of the work or the organization (e.g., "Join us", "We are looking for reliable people", "Become part of our team").
     11. Out of context of the ongoing conversation in the chat.
+    12. Sales advertisements or promotional messages for products/services (e.g., "selling", "buy now", "special offer", "discount", "promotion").
 
-    If 2 or more of these signs are present in the message, even if they are not strongly expressed, then it should be classified as spam.
-    Be cautious not to flag the message as spam simply because it mentions job opportunities or collaborations. 
-    Genuine messages may share some characteristics with spam, such as inviting people to discuss details in private. 
-    Only classify the message as spam if it exhibits a clear pattern of unsolicited, suspicious, or off-topic content.
+    Return a JSON response in the following format:
+    {{
+        "is_spam": true/false,
+        "confidence": float between 0 and 1,
+        "spam_signs": [
+            {{
+                "type": "string (one of: high_earnings, remote_work, pm_redirect, no_experience, emoji_abuse, vague_wording, generic_greeting, unusual_formatting, minimal_requirements, vague_invitation, out_of_context, sales_ad)",
+                "description": "string explaining why this sign was detected"
+            }}
+        ],
+        "explanation": "string with detailed explanation of the decision"
+    }}
 
     Context of the last 5 messages in the chat:
     {context}
 
-    New message to be evaluated: 
+    New message to evaluate: 
     {message}
 
-    Response format:
-    SPAM - if the message is spam. Add explanations of what signs of spam are present.
-    SAFE - if the message is not spam. Briefly explain why you didn't consider it spam, and note if any additional context might still be needed to fully determine the message's legitimacy.
-    Put the mark SPAM or SAFE at the beginning of your response.
+    Return ONLY the JSON response without any additional text.
     """
     try:
         logger.info(f'Waiting for the model to evaluate message: {message}')
 
         completion = client.chat.completions.create(
-            model="gpt-4o",
-            temperature=0.5,
+            model="deepseek-chat",
+            temperature=0.2,
+            response_format={ "type": "json_object" },
             messages=[
-                {"role": "system", "content": "You are an AI assistant trained to identify potential spam messages in a Telegram chat."},
+                {"role": "system", "content": "You are an AI assistant that analyzes messages for spam. Always respond with valid JSON."},
                 {"role": "user", "content": prompt}
             ]
         )
 
-        result = completion.choices[0].message.content.lower()
-        logger.info(f'Model answer: {result}')
-        return 'spam' in result[:8]
+        result = json.loads(completion.choices[0].message.content)
+        
+        analysis_log = (
+            f"\nMessage: {message}\n"
+            f"Is spam: {result['is_spam']}\n"
+            f"Confidence: {result['confidence']}\n"
+            f"Spam signs detected: {len(result['spam_signs'])}\n"
+        )
+        for sign in result['spam_signs']:
+            analysis_log += f"- {sign['type']}: {sign['description']}\n"
+        analysis_log += f"Explanation: {result['explanation']}\n"
+        
+        spam_logger.info(analysis_log)
+        logger.info(f'Model analysis: {json.dumps(result, indent=2)}')
+        
+        is_spam_message = (
+            (result['is_spam'] and result['confidence'] >= 0.7) or
+            (len(result['spam_signs']) >= 2 and result['confidence'] >= 0.6)
+        )
+        
+        return is_spam_message
+
     except Exception as e:
         logger.error(f"Error in is_spam function: {type(e).__name__}: {e}")
         return False
 
-allowed_chats = [-1001474293774, -1002051811264]
+allowed_chats = [-1001474293774, -1002051811264, -4684100667]
 
 async def handle_message(update: Update, context):
     message = update.message
@@ -145,7 +177,7 @@ async def handle_message(update: Update, context):
 
                 if can_restrict:
                     try:
-                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=int(user_id))
+                        #await context.bot.ban_chat_member(chat_id=chat_id, user_id=int(user_id))
                         action_log += ", User banned"
                     except Exception as e:
                         logger.error(f"Failed to ban user: {e}")
