@@ -4,27 +4,7 @@ since Llama requires quite a relatively beefy hosting setup.
 
 7-1-2025:
 - Added structured output to the model.
+- Switched to deepseek
 
-8-1-2025:
-- Switched to DeepSeek Chat model (cheaper and comparable quality).
+19-11-2025:
 - Added Docker support for easy deployment.
-
-## How to run (Docker)
-
-1.  Create `.env` file with your keys:
-    ```
-    TELEGRAM_API_TOKEN=your_token
-    DEEPSEEK_API_KEY=your_key
-    ```
-
-2.  Run with Docker Compose:
-    ```bash
-    touch spam_log.txt safe_users.json
-    docker compose up -d --build
-    ```
-
-## Deployment notes
-The `safe_users.json` file (whitelist) is in `.gitignore`. When deploying to a new server, you need to copy it manually or create a new one:
-```bash
-echo "{}" > safe_users.json
-```
