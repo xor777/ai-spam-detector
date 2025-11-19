@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  spam-bot:
+    build: .
+    container_name: ai-spam-detector
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./spam_log.txt:/app/spam_log.txt
+      - ./safe_users.json:/app/safe_users.json
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+

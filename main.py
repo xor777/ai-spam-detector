@@ -158,10 +158,16 @@ async def handle_message(update: Update, context):
             logger.info(f'Recent messages for chat {chat_id}: {context_text}')
 
             if is_spam(message_text, context_text):
-                # Check bot permissions
                 bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
-                can_delete = bot_member.can_delete_messages
-                can_restrict = bot_member.can_restrict_members
+                
+                can_delete = getattr(bot_member, 'can_delete_messages', False)
+                can_restrict = getattr(bot_member, 'can_restrict_members', False)
+                
+                logger.info(f"Bot permissions in chat {chat_id}:")
+                logger.info(f"  - Status: {bot_member.status}")
+                logger.info(f"  - Can delete messages: {can_delete}")
+                logger.info(f"  - Can restrict members: {can_restrict}")
+                logger.info(f"  - Chat type: {message.chat.type}")
 
                 action_log = f"User ID: {user_id}, Username: {username}, Spam Message: {message_text}"
 
@@ -180,12 +186,15 @@ async def handle_message(update: Update, context):
 
                 if can_restrict:
                     try:
-                        #await context.bot.ban_chat_member(chat_id=chat_id, user_id=int(user_id))
+                        logger.info(f"Attempting to ban user {user_id} ({username}) in chat {chat_id}")
+                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=int(user_id))
                         action_log += ", User banned"
+                        logger.info(f"User {user_id} banned successfully")
                     except Exception as e:
                         logger.error(f"Failed to ban user: {e}")
                         action_log += f", Failed to ban user ({e})"
                 else:
+                    logger.warning(f"No permission to ban user {user_id} in chat {chat_id}")
                     action_log += ", No permission to ban user"
 
                 spam_logger.info(action_log)
