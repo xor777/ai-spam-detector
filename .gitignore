@@ -50,3 +50,8 @@ Icon
 spam_log.txt
 safe_users.json
 *.log 
+.claude/
+.specify/
+CLAUDE.md
+GEMINI.md
+specs/

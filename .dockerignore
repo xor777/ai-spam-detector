@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+._*
+
+# Environment and secrets
+.env
+*.env
+
+# Logs and data (handled via volumes)
+spam_log.txt
+safe_users.json
+*.log
+
+# Documentation and specs
+specs/
+.specify/
+.claude/
+CLAUDE.md
+GEMINI.md
+*.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
