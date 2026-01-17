@@ -8,3 +8,7 @@ since Llama requires quite a relatively beefy hosting setup.
 
 19-11-2025:
 - Added Docker support for easy deployment.
+
+17-1-2026:
+- Migrated from DeepSeek direct API to OpenRouter 
+- Added image spam detection using Gemini 3 Flash 
