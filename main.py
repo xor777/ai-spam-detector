@@ -116,8 +116,14 @@ def is_spam(message: str, context: str) -> bool:
             ]
         )
 
-        result = json.loads(completion.choices[0].message.content)
-        
+        response_content = completion.choices[0].message.content
+        try:
+            result = json.loads(response_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse model response as JSON: {e}")
+            logger.error(f"Raw model response: {response_content!r}")
+            return False
+
         analysis_log = (
             f"\n[TEXT] Message: {message}\n"
             f"Is spam: {result['is_spam']}\n"
@@ -191,7 +197,13 @@ Return ONLY the JSON response without any additional text."""
             ]
         )
 
-        result = json.loads(completion.choices[0].message.content)
+        response_content = completion.choices[0].message.content
+        try:
+            result = json.loads(response_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse image model response as JSON: {e}")
+            logger.error(f"Raw image model response: {response_content!r}")
+            return {'is_spam': False, 'result': None}
 
         analysis_log = (
             f"\n[IMAGE] User ID: {user_id}, Username: {username}\n"
