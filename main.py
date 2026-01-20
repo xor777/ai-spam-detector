@@ -78,6 +78,7 @@ def is_spam(message: str, context: str) -> bool:
     10. Vague invitations to join a project or group without providing any specific details about the nature of the work or the organization (e.g., "Join us", "We are looking for reliable people", "Become part of our team").
     11. Out of context of the ongoing conversation in the chat.
     12. Sales advertisements or promotional messages for products/services (e.g., "selling", "buy now", "special offer", "discount", "promotion").
+    13. Unsolicited financial offers such as loans, credits, or money lending (e.g., "I'll lend you money", "need a loan?", "offering credit", "одолжу", "дам в долг", "займ") - these are almost always scam attempts.
 
     If 2 or more of these signs are present in the message, even if they are not strongly expressed, then it should be classified as spam.
     Be cautious not to flag the message as spam simply because it mentions job opportunities or collaborations. 
@@ -88,7 +89,7 @@ def is_spam(message: str, context: str) -> bool:
         "confidence": float between 0 and 1,
         "spam_signs": [
             {{
-                "type": "string (one of: high_earnings, remote_work, pm_redirect, no_experience, emoji_abuse, vague_wording, generic_greeting, unusual_formatting, minimal_requirements, vague_invitation, out_of_context, sales_ad)",
+                "type": "string (one of: high_earnings, remote_work, pm_redirect, no_experience, emoji_abuse, vague_wording, generic_greeting, unusual_formatting, minimal_requirements, vague_invitation, out_of_context, sales_ad, financial_offer)",
                 "description": "string explaining why this sign was detected"
             }}
         ],
