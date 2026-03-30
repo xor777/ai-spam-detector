@@ -47,8 +47,11 @@ def load_safe_users(file_path='safe_users.json'):
 
 def save_safe_users(data, file_path='safe_users.json'):
     data_to_save = {user_id: info for user_id, info in data.items()}
-    with open(file_path, 'w', encoding='utf-8') as file:
-        json.dump(data_to_save, file)
+    temp_file_path = f'{file_path}.tmp'
+    with open(temp_file_path, 'w', encoding='utf-8') as file:
+        json.dump(data_to_save, file, ensure_ascii=False, indent=2)
+        file.write('\n')
+    os.replace(temp_file_path, file_path)
 
 safe_messages_count = load_safe_users()
 recent_messages = defaultdict(lambda: deque(maxlen=5))
