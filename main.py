@@ -47,11 +47,11 @@ def load_safe_users(file_path='safe_users.json'):
 
 def save_safe_users(data, file_path='safe_users.json'):
     data_to_save = {user_id: info for user_id, info in data.items()}
-    temp_file_path = f'{file_path}.tmp'
-    with open(temp_file_path, 'w', encoding='utf-8') as file:
+    with open(file_path, 'w', encoding='utf-8') as file:
         json.dump(data_to_save, file, ensure_ascii=False, indent=2)
         file.write('\n')
-    os.replace(temp_file_path, file_path)
+        file.flush()
+        os.fsync(file.fileno())
 
 safe_messages_count = load_safe_users()
 recent_messages = defaultdict(lambda: deque(maxlen=5))
@@ -61,12 +61,36 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1"
 )
 
-def is_spam(message: str, context: str) -> bool:
+def is_spam(message: str, context: str, source_message: str | None = None) -> bool:
+    if source_message:
+        message_to_evaluate = f"""
+    Source message:
+    {source_message}
+
+    Reply:
+    {message}
+    """
+    else:
+        message_to_evaluate = f"""
+    Message:
+    {message}
+    """
+
     prompt = f"""
     You are an AI assistant trained to identify potential spam messages in a Telegram chat dedicated to automobiles and lifestyle. 
     While the chat mainly focuses on car-related topics, members can discuss various subjects.
     Your task is to carefully analyze a specific message within the context of the ongoing conversation 
     and determine if it is likely spam or a genuine message.
+
+    The input may contain either:
+    1. a standalone message, or
+    2. a source message plus a user reply to that source.
+
+    If a source message is provided, analyze the source message and the reply together.
+    Short replies such as thanks, gratitude, approval, or brief reactions are not spam by themselves.
+    However, if such a reply is endorsing, amplifying, or reacting positively to a promotional, scammy, or otherwise spam-like source message,
+    you should consider the combined meaning.
+    Be conservative with short positive replies: do not classify them as spam with high confidence unless the source message materially changes the meaning.
 
     Consider the following criteria when assessing the message:
     1. Promises of high earnings in a short period or with little effort (e.g., "300-400 dollars per week", "500$+ per week", "pure profit of 400-500$ per day").
@@ -102,13 +126,16 @@ def is_spam(message: str, context: str) -> bool:
     Context of the last 5 messages in the chat:
     {context}
 
-    New message to evaluate: 
-    {message}
+    Message content to evaluate:
+    {message_to_evaluate}
 
     Return ONLY the JSON response without any additional text.
     """
     try:
-        logger.info(f'Waiting for the model to evaluate message: {message}')
+        if source_message:
+            logger.info(f'Waiting for the model to evaluate reply with source message. Reply: {message} | Source: {source_message}')
+        else:
+            logger.info(f'Waiting for the model to evaluate message: {message}')
 
         completion = client.chat.completions.create(
             model=TEXT_MODEL,
@@ -134,6 +161,8 @@ def is_spam(message: str, context: str) -> bool:
             f"Confidence: {result['confidence']}\n"
             f"Spam signs detected: {len(result['spam_signs'])}\n"
         )
+        if source_message:
+            analysis_log += f"Source message: {source_message}\n"
         for sign in result['spam_signs']:
             analysis_log += f"- {sign['type']}: {sign['description']}\n"
         analysis_log += f"Explanation: {result['explanation']}\n"
@@ -236,6 +265,87 @@ Return ONLY the JSON response without any additional text."""
 
 allowed_chats = [-1001474293774, -1002051811264, -4684100667, -5111113304]
 
+def log_message_metadata(message) -> None:
+    forward_origin = getattr(message, 'forward_origin', None)
+    external_reply = getattr(message, 'external_reply', None)
+    quote = getattr(message, 'quote', None)
+    contact = getattr(message, 'contact', None)
+    sender_chat = getattr(message, 'sender_chat', None)
+    is_automatic_forward = getattr(message, 'is_automatic_forward', None)
+
+    metadata = {
+        'message_id': message.message_id,
+        'chat_id': message.chat_id,
+        'from_user_id': getattr(message.from_user, 'id', None),
+        'from_username': getattr(message.from_user, 'username', None),
+        'has_text': bool((message.text or '').strip()),
+        'has_caption': bool((message.caption or '').strip()),
+        'has_photo': bool(message.photo),
+        'has_contact': contact is not None,
+        'has_forward_origin': forward_origin is not None,
+        'forward_origin_type': type(forward_origin).__name__ if forward_origin else None,
+        'is_automatic_forward': is_automatic_forward,
+        'has_external_reply': external_reply is not None,
+        'has_quote': quote is not None,
+        'sender_chat_id': getattr(sender_chat, 'id', None),
+        'sender_chat_title': getattr(sender_chat, 'title', None),
+    }
+
+    if forward_origin is not None:
+        metadata.update({
+            'forward_date': getattr(forward_origin, 'date', None).isoformat() if getattr(forward_origin, 'date', None) else None,
+            'forward_sender_user_id': getattr(getattr(forward_origin, 'sender_user', None), 'id', None),
+            'forward_sender_username': getattr(getattr(forward_origin, 'sender_user', None), 'username', None),
+            'forward_sender_name': getattr(forward_origin, 'sender_user_name', None),
+            'forward_sender_chat_id': getattr(getattr(forward_origin, 'sender_chat', None), 'id', None),
+            'forward_sender_chat_title': getattr(getattr(forward_origin, 'sender_chat', None), 'title', None),
+            'forward_chat_id': getattr(getattr(forward_origin, 'chat', None), 'id', None),
+            'forward_chat_title': getattr(getattr(forward_origin, 'chat', None), 'title', None),
+            'forward_message_id': getattr(forward_origin, 'message_id', None),
+        })
+
+    if external_reply is not None:
+        origin = getattr(external_reply, 'origin', None)
+        quoted = getattr(external_reply, 'quote', None)
+        metadata.update({
+            'external_reply_origin_type': type(origin).__name__ if origin else None,
+            'external_reply_has_quote': quoted is not None,
+            'external_reply_text': getattr(external_reply, 'text', None),
+        })
+
+    if quote is not None:
+        metadata['quote_text'] = getattr(quote, 'text', None)
+
+    if contact is not None:
+        metadata.update({
+            'contact_phone_number': getattr(contact, 'phone_number', None),
+            'contact_first_name': getattr(contact, 'first_name', None),
+            'contact_last_name': getattr(contact, 'last_name', None),
+            'contact_user_id': getattr(contact, 'user_id', None),
+            'contact_vcard_present': bool(getattr(contact, 'vcard', None)),
+        })
+
+    logger.info(f"Message metadata: {json.dumps(metadata, ensure_ascii=False, default=str)}")
+
+def get_source_message_text(message) -> str | None:
+    external_reply = getattr(message, 'external_reply', None)
+    if external_reply is not None:
+        external_reply_text = getattr(external_reply, 'text', None)
+        if external_reply_text and external_reply_text.strip():
+            return external_reply_text.strip()
+
+        external_quote = getattr(external_reply, 'quote', None)
+        external_quote_text = getattr(external_quote, 'text', None)
+        if external_quote_text and external_quote_text.strip():
+            return external_quote_text.strip()
+
+    quote = getattr(message, 'quote', None)
+    quote_text = getattr(quote, 'text', None)
+    if quote_text and quote_text.strip():
+        return quote_text.strip()
+
+    return None
+
 async def handle_message(update: Update, context):
     message = update.message
     if message is None or message.from_user is None:
@@ -254,10 +364,15 @@ async def handle_message(update: Update, context):
         logger.info(f'Skipping message from chat ID {chat_id} not in allowed list')
         return
 
+    log_message_metadata(message)
+
     if message.chat.type in ['group', 'supergroup'] and not message.from_user.is_bot:
         if safe_messages_count[user_id]['count'] < 2:
             context_text = '\n'.join(recent_messages[chat_id])
+            source_message_text = get_source_message_text(message)
             logger.info(f'Recent messages for chat {chat_id}: {context_text}')
+            if source_message_text:
+                logger.info(f'Using source message for spam analysis: {source_message_text}')
 
             text_is_spam = False
             image_is_spam = False
@@ -283,9 +398,11 @@ async def handle_message(update: Update, context):
 
             # Analyze text if present
             if has_text:
-                text_is_spam = is_spam(message_text, context_text)
-                if text_is_spam:
+                text_is_spam = is_spam(message_text, context_text, source_message_text)
+                if text_is_spam and not source_message_text:
                     should_ban = True
+                elif text_is_spam and source_message_text:
+                    logger.info(f"Detected source-dependent text spam for user {user_id} ({username}); delete-only mode active")
 
             # Determine content type for logging
             if has_photo and has_text:
@@ -342,7 +459,10 @@ async def handle_message(update: Update, context):
                     logger.warning(f"No permission to ban user {user_id} in chat {chat_id}")
                     action_log += ", No permission to ban user"
                 elif not should_ban:
-                    action_log += ", User not banned (image spam only)"
+                    if text_is_spam and source_message_text:
+                        action_log += ", User not banned (source-dependent text spam)"
+                    else:
+                        action_log += ", User not banned (image spam only)"
 
                 spam_logger.info(action_log)
             else:
