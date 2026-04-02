@@ -19,7 +19,7 @@ TEXT_MODEL = os.getenv('TEXT_MODEL', 'deepseek/deepseek-chat-v3.1')
 IMAGE_MODEL = os.getenv('IMAGE_MODEL', 'google/gemini-3-flash-preview')
 
 # Image spam configuration
-BAN_FOR_IMAGE_SPAM = os.getenv('BAN_FOR_IMAGE_SPAM', 'false').lower() == 'true'
+BAN_FOR_IMAGE_SPAM = True
 MAX_IMAGE_SIZE_MB = float(os.getenv('MAX_IMAGE_SIZE_MB', '5'))
 IMAGE_ANALYSIS_TIMEOUT = float(os.getenv('IMAGE_ANALYSIS_TIMEOUT', '5'))
 
@@ -399,10 +399,10 @@ async def handle_message(update: Update, context):
             # Analyze text if present
             if has_text:
                 text_is_spam = is_spam(message_text, context_text, source_message_text)
-                if text_is_spam and not source_message_text:
+                if text_is_spam:
                     should_ban = True
-                elif text_is_spam and source_message_text:
-                    logger.info(f"Detected source-dependent text spam for user {user_id} ({username}); delete-only mode active")
+                    if source_message_text:
+                        logger.info(f"Detected source-dependent text spam for user {user_id} ({username}); ban mode active")
 
             # Determine content type for logging
             if has_photo and has_text:
@@ -459,9 +459,7 @@ async def handle_message(update: Update, context):
                     logger.warning(f"No permission to ban user {user_id} in chat {chat_id}")
                     action_log += ", No permission to ban user"
                 elif not should_ban:
-                    if text_is_spam and source_message_text:
-                        action_log += ", User not banned (source-dependent text spam)"
-                    else:
+                    if image_is_spam:
                         action_log += ", User not banned (image spam only)"
 
                 spam_logger.info(action_log)
